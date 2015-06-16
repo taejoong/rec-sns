@@ -3,11 +3,19 @@ import sys
 import json
 import MySQLdb
 from igraph import *
-conn = MySQLdb.connect('localhost', 'root', 'mmlab2013', 'sns', charset='utf8', use_unicode=True)
+
+
+#initialize connection
+conn = MySQLdb.connect('localhost', 'root', '**********', 'sns', charset='utf8', use_unicode=True)
 cursor = conn.cursor()
 
-MAX_SEARCH = 100
-WEIGHT_THRESHOLD = 5
+"""
+MAX_SEARCH 
+- the number of content used for constructing a graph is too large. 
+hence we construct a graph given number of content matched given keyword
+"""
+MAX_SEARCH = 100 
+WEIGHT_THRESHOLD = 5 
 WEIGHT_DIFFERENT_MEDIA = 2
 WEIGHT_HASH_TAG = 1.5
 WEIGHT_MORPHEME = {'NNP': 0.5, 'OL': 0.3, 'NNG': 0.1}
