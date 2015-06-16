@@ -10,16 +10,41 @@ conn = MySQLdb.connect('localhost', 'root', '**********', 'sns', charset='utf8',
 cursor = conn.cursor()
 
 """
-MAX_SEARCH 
+1) MAX_SEARCH 
 - the number of content used for constructing a graph is too large. 
 hence we construct a graph given number of content matched given keyword
+
+2) WEIGHT_THRESHOLD 
+- the maximum number of edges of the graph having N vertices is N(N-1)/2, 
+which is very large.
+- So, we consider the edges between considerablely related 
+
+    [1] WEIGHT_HASH_TAG
+    - give weight proportionally as many hashtags are overlapped between two contents
+
+    [2] WEIGHT_MORPHEME
+    - we also consider morpheme of text information in social text.
+    - but we consider more in order of common noun, foreign language, and proper noun.
+
 """
+
 MAX_SEARCH = 100 
 WEIGHT_THRESHOLD = 5 
 WEIGHT_DIFFERENT_MEDIA = 2
 WEIGHT_HASH_TAG = 1.5
 WEIGHT_MORPHEME = {'NNP': 0.5, 'OL': 0.3, 'NNG': 0.1}
         
+
+
+
+"""
+    funtion:    getContent
+    argument:   content id
+    description:
+        it returns the content details of given id
+        which isn't being used but only for debugging
+"""
+
 def getContent(cid):
     if(cid[0] == "T"):
         selecter = "text"
@@ -43,10 +68,14 @@ def getContent(cid):
     r = conn.store_result()
     return r.fetch_row(1)[0][0]
 
-def getRelatedKeyword(keyword):
-    query = """
-    """
+"""
 
+    funtion:    convertWhereStatement
+    argument:   condition, keyword
+    description:
+        It combines the multiple keyword match for MySQL queries.
+
+"""
 def convertWhereStatement(condition, keywords):
     where = []
     for keyword in keywords:
@@ -55,8 +84,29 @@ def convertWhereStatement(condition, keywords):
     where_sentence = " and ".join(where)
     return where_sentence % tuple(keywords)
 
+"""
+
+    funtion:    getCntCommonWords
+    argument:   two different lists
+    description:
+        it simply returns the number of common elements between two lists
+
+"""
+
 def getCntCommonWords(list_a, list_b):
     return len(set(list_a).intersection(set(list_b)))
+
+"""
+
+    funtion:    searchKeyword
+    argument:   keywords
+    description:
+        find the contents matched given keywords.
+        1)  YouTube  : matched title and description
+        2)  Twitter  : matched tweet message
+        3)  Instagram: matched text description
+
+"""
 
 def searchKeyword(keywords):
     #1. Twitter query
@@ -107,6 +157,16 @@ def searchKeyword(keywords):
     
     return twitter_dict, instagram_dict, youtube_dict
 
+"""
+
+    funtion:    getRelation
+    argument:   keywords, hashtag, morpheme
+    description:
+        it caculate the relation score based on the similarities of
+        keyword, hashtag, and morpheme between two contents
+
+"""
+
 def getRelation(c1_name, (c1_hashtag, c1_morpheme), 
                  c2_name, (c2_hashtag, c2_morpheme)):
     c1_media = c1_name[0]
@@ -145,6 +205,17 @@ def getRelation(c1_name, (c1_hashtag, c1_morpheme),
     
     return weight
 
+"""
+
+    funtion:    makeGraph
+    argument:   twitter, instagram, youtube contents
+    description:
+        it generates a graph where structure is set of nodes and edges
+        nodes are all contents matched given content
+        egdes are made when similarity score between two nodes is higher than WEIGHT_THRESHOLD
+
+"""
+
 def makeGraph(t_dict, i_dict, y_dict):
     combine_dict = t_dict.copy()
     combine_dict.update(i_dict)
@@ -159,6 +230,17 @@ def makeGraph(t_dict, i_dict, y_dict):
             if(weight >= WEIGHT_THRESHOLD):
                 edge_list.append((c1, c2, weight))
     return edge_list
+
+"""
+
+    funtion:    makeCommunity
+    argument:   graph
+    description:
+        it makes set of communities made by fast greedy method, 
+        returning the community ids and their corresponding member lists.
+
+"""
+
 
 def makeCommunity(edge_list):
     g = Graph()
@@ -180,14 +262,36 @@ def makeCommunity(edge_list):
     
     return g, community
 
+
+"""
+
+    funtion:    makeCache
+    argument:   keyword, graph, community results
+    description:
+        It would take much longer time, and give burdens 
+        if system makes graph, calculate similarity, and finds communities
+        whenever new query comes to.
+        Hence we cache the suggestion results under the given queries for a caching purpose by
+        simply logs the results.
+
+"""
+
 def makeCache(keyword, g, community):
     c_num = 0
     for c in community:
         c_num += 1
-        if(len(c) >= 5):
+        if(len(c) >= 5): ## we only care the community where the number of members are fairly large enough
             for member in c:
-                #makeCache (c_num, member, len(c), g.vs[member]['name'])#, )
                 logCache(",".join(keyword), c_num, len(c), g.vs[member]['name'])
+
+"""
+
+    funtion:    logCache
+    argument:   keyword, graph, community results
+    description:
+        log for cache
+
+"""
 
 def logCache(keyword, cid, csize, content_id):
     query = """
@@ -198,6 +302,23 @@ def logCache(keyword, cid, csize, content_id):
     print query % (keyword, cid, csize, content_id[0], content_id[2:], MAX_SEARCH, WEIGHT_THRESHOLD)
     cursor.execute(query, (keyword, cid, csize, content_id[0], content_id[2:], MAX_SEARCH, WEIGHT_THRESHOLD))
     conn.commit()
+
+
+"""
+
+    funtion:    checkCached
+    argument:   keyword
+    description:
+        before analyzing the content and the given keyword
+        we first check whether the recommendation result are cached or not.
+        *DISCLAMER*
+        It caches only primitive information (i.e., keyword)
+        However when we consider more information such as timely sensitivity of a content,
+        weight threshold, the type of content, and etc, then we could apply more sophisticated
+        cache strategy.
+
+"""
+
 
 def checkCached(keywords):
     #where = convertWhereStatement("""keyword = "%s" """, keywords)
@@ -215,6 +336,20 @@ def checkCached(keywords):
     else:
         return False
 
+
+"""
+
+    funtion:    getRecommendation
+    argument:   keyword
+    description:
+        Basic API to get a recommendation
+        it operates under below steps.
+            1) searching contents given keyword
+            2) making a graph and constructing communities
+            3) return the results and make them cached
+
+"""
+
 def getRecommendation(keyword):
     if(checkCached(keyword)):
         return 0 ## return cached content
@@ -225,8 +360,7 @@ def getRecommendation(keyword):
         makeCache(keyword, graph, community)
 
 if __name__ == "__main__":
+    ## example, keyword can be multiple 
     keywords = ["kimsoohyun"]
     getRecommendation(keywords)
-    #print len(edge_list)
-    #print len(t_dict), len(i_dict), len(y_dict)
 
