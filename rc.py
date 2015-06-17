@@ -3,7 +3,7 @@ import sys
 import json
 import MySQLdb
 from igraph import *
-
+# To construct a graph and find communities within it, we used the igraph library
 
 #initialize connection
 conn = MySQLdb.connect('localhost', 'root', '**********', 'sns', charset='utf8', use_unicode=True)
@@ -35,14 +35,14 @@ WEIGHT_HASH_TAG = 1.5
 WEIGHT_MORPHEME = {'NNP': 0.5, 'OL': 0.3, 'NNG': 0.1}
         
 
-
-
 """
     funtion:    getContent
     argument:   content id
     description:
         it returns the content details of given id
         which isn't being used but only for debugging
+        T stands for twitter content and I stands for Instagram content,
+        and Y stands for Youtube content
 """
 
 def getContent(cid):
